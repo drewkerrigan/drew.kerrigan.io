@@ -8,12 +8,14 @@ How to create a leaderboard at scale or other massive distributed sorted sets.
 
 This post is heavily influenced by [https://github.com/clr](https://github.com/clr) and his repository found here: [https://github.com/clr/massive\_distributed\_sorted\_set](https://github.com/clr/massive_distributed_sorted_set)
 
+
 # The Problem
 
 Consider the following use-case: A video game backend needs to track high scores for every user and display a leaderboard for those users. There are two main flavors of this problem that impact the resulting solution.
 
 1. Display only the top 10 scores of all time
 2. Display a user's overall ranking as well as arbitrary pagination of the entire list
+
 
 # Solution 1: Display only the top 10 scores of all time
 
@@ -87,6 +89,7 @@ Because it may be possible to have multiple actors updating the top 10 scores co
   * remove the lowest scores so that 10 remain
   * update the lowest_score entry and save the value
 
+
 # Solution 2: Display a user's overall ranking as well as arbitrary pagination of the entire list
 
 The solution to this problem is a little more tricky when we take into account the possibility of millions of users, or even billions or trillions of individual scores that need to be tracked over the lifetime of a game.
@@ -126,7 +129,6 @@ Key: `game_manifest`, Value:
 Using these data structures, we are storing 1000 `entry_sets` in our `manifest`, and 1000 individual scores and usernames in each `entry_set`. The limit of 1000 is somewhat arbitrary, but most of the time, you wouldn't want to sort an unordered set of more than that many individual entries for performance reasons. With a set up like this, you could store up to 1 million individual scores in sorted order without the use of an external index.
 
 ## Algorithms
-
 
 ### Writing a new score
 
@@ -248,3 +250,12 @@ In solution 2a with a single `master_manifest` of `manifests`, the process to st
 * Fetch and append the new score to that `entry_set`
   * If the number of scores in the `entry_set` exceeds 1000, split it into two `entry_sets` and update the `manifest`
     * If the number of `entry_sets` in the `manifest` exeeds 1000, split it into two `manifests` and update the `master_manifest`
+
+
+# Notes
+
+The above data structures and algorithms make certain assumptions about the datastore being used. The sets and maps described above are pseudo-data representations of CRDTs. A similar solution is possible without the use of CRDTs, but the solution then becomes constrained with the need for serialized writes in order to make sure that no data is lost when updating manifests or entry sets. Concurrent reads should still be possible without CRDTs.
+
+Riak 2.0 introduced Registers, Sets, Counters, and Maps implemented as CRDTs on the server side which make the implementation of solutions such as these much easier. Find out more at [http://docs.basho.com](http://docs.basho.com) and [http://docs.basho.com/riak/latest/theory/concepts/crdts/#Riak-s-Five-Data-Types](http://docs.basho.com/riak/latest/theory/concepts/crdts/#Riak-s-Five-Data-Types).
+
+An example proof of concept of Solution 2 without the use of Riak's CRDT Datatypes can be found here: [https://github.com/clr/massive\_distributed\_sorted\_set](https://github.com/clr/massive_distributed_sorted_set). Please note that it expects serialized writes, and requires an additional data structure called a `transaction_log` to keep track of modified `manifests`.
