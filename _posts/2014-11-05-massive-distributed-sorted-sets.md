@@ -80,7 +80,7 @@ The resulting value for `game_top_10` in our datastore would look like this:
 }
 ```
 
-Because it may be possible to have multiple actors updating the top 10 scores concurrently, we need to have logic on read to ensure the following:
+Because it may be possible to have multiple actors updating the top 10 scores concurrently, we need to have logic on read to ensure the following steps happen:
 
 * Sort the list of scores in memory
 * If there are more than 10 entries in the set:
