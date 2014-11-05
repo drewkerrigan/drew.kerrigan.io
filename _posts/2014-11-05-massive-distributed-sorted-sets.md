@@ -104,7 +104,7 @@ Key: `game_entry_set_<arbitrary_guid_1>`, Value:
 
 ```
 [
-  {"user": "han", "score": 100000},
+  {"user": "han", "score": 1000000},
   ...
   {"user": "r2-d2", "score": 999000}
 ]
