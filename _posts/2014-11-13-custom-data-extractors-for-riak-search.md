@@ -249,3 +249,36 @@ curl -XPUT \
 ```
 curl 'http://localhost:8098/search/query/my_index?wt=json&q=method:GET'
 ```
+
+And if everything is successful, we should see our record returned in the results!
+
+```
+{
+    "response": {
+        "docs": [
+            {
+                "_yz_id": "1*my_type*headers*google*15",
+                "_yz_rb": "headers",
+                "_yz_rk": "google",
+                "_yz_rt": "my_type",
+                "host": "www.google.com",
+                "method": "GET",
+                "uri": "/"
+            }
+        ],
+        "maxScore": 0.71231794,
+        "numFound": 1,
+        "start": 0
+    },
+    "responseHeader": {
+        "QTime": 8,
+        "params": {
+            "127.0.0.1:8093": "_yz_pn:64 OR (_yz_pn:61 AND (_yz_fpn:61)) OR _yz_pn:60 OR _yz_pn:57 OR _yz_pn:54 OR _yz_pn:51 OR _yz_pn:48 OR _yz_pn:45 OR _yz_pn:42 OR _yz_pn:39 OR _yz_pn:36 OR _yz_pn:33 OR _yz_pn:30 OR _yz_pn:27 OR _yz_pn:24 OR _yz_pn:21 OR _yz_pn:18 OR _yz_pn:15 OR _yz_pn:12 OR _yz_pn:9 OR _yz_pn:6 OR _yz_pn:3",
+            "q": "method:GET",
+            "shards": "127.0.0.1:8093/internal_solr/my_index",
+            "wt": "json"
+        },
+        "status": 0
+    }
+}
+```
