@@ -1,6 +1,6 @@
 ---
 layout: post
-title: Riak Data Modeling: Shopping Cart
+title: Riak Data Modeling - Shopping Cart
 permalink: "riak-data-modeling-shopping-cart"
 author: 
     name: "Drew Kerrigan"
