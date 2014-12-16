@@ -107,7 +107,19 @@ It is also possible to allow for full text search over all products, but doing s
 Example solr facet query to build category navigation:
 
 ```
-TODO: facet query here
+curl 'http://localhost:8098/search/query/product_index?wt=json&q=*:*&facet=true&facet.field=categories_set'
+```
+
+This should return something similar to this result:
+
+```
+{
+  "facet_fields": {
+    "categories_set": [
+      "clothing/mens/shirts", 1,
+      "clothing/womens/shirts", 1 ]
+  }
+}
 ```
 
 ### Inventory Data
