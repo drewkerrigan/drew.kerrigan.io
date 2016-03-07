@@ -4,9 +4,8 @@ title: Riak Data Modeling - Shopping Cart
 permalink: "riak-data-modeling-shopping-cart"
 author: 
     name: "Drew Kerrigan"
+summary: Modeling shopping cart data in Riak
 ---
-
-Modeling shopping cart data in Riak
 
 # Riak Data Modeling: Shopping Cart
 

@@ -2,11 +2,10 @@
 layout: post
 title: Custom Data Extractors for Riak Search
 permalink: "custom-data-extractors-for-riak-search"
+summary: How to index custom data types with Riak Search.
 author: 
     name: "Drew Kerrigan"
 ---
-
-How to index custom data types with Riak Search.
 
 # Custom Yokozuna Extractors
 

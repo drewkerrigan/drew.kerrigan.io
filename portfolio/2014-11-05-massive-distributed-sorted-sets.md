@@ -2,11 +2,10 @@
 layout: post
 title: Massive Distributed Sorted Sets
 permalink: "massive-distributed-sorted-sets"
+summary: How to create a leaderboard at scale or other massive distributed sorted sets.
 author: 
     name: "Drew Kerrigan"
 ---
-
-How to create a leaderboard at scale or other massive distributed sorted sets.
 
 This post is heavily influenced by [https://github.com/clr](https://github.com/clr) and his repository found here: [https://github.com/clr/massive\_distributed\_sorted\_set](https://github.com/clr/massive_distributed_sorted_set)
 
