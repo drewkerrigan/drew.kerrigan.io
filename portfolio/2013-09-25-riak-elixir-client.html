@@ -1,0 +1,231 @@
+---
+layout: post
+title: Riak Elixir Client
+permalink: "riak-elixir-client"
+summary: Introducing: <a href="http://github.com/drewkerrigan/riak-elixir-client">http://github.com/drewkerrigan/riak-elixir-client</a>
+author: 
+    name: "Drew Kerrigan"
+---
+
+<p>An Elixir wrapper for riak-erlang-client.</p>
+
+
+
+
+<h3 id="whatiselixir">What is Elixir?</h3>
+
+
+
+
+<p>From <a href="http://elixir-lang.org/">http://elixir-lang.org/</a>: </p>
+
+
+
+
+<blockquote>
+  <p>Elixir is a functional, meta-programming aware language built on top of the Erlang VM. It is a dynamic language with flexible syntax and macro support that leverages Erlang&#8217;s abilities to build concurrent, distributed and fault-tolerant applications with hot code upgrades.</p>
+</blockquote>
+
+
+
+
+<h3 id="okbutwhatswrongwitherlang">Ok… But what&#8217;s wrong with Erlang?</h3>
+
+
+
+
+<p>Absolutely nothing. </p>
+
+
+
+
+<p>Some have made the argument that Elixir&#8217;s ruby-like syntax is better than Erlang&#8217;s, but I don&#8217;t buy that. Elixir is still a functional language just like Erlang, and if you don&#8217;t like the way things are done in one, you probably won&#8217;t like the other. The choice between Elixir and Erlang is a matter of preference in how you like to express ideas through code.</p>
+
+
+
+
+<p>I love the simplicity of Erlang&#8217;s syntax and data types for a lot of problems. For instance it makes sending raw messages from process to process look nice and clean no matter what machine each process happens to be running on. Elixir allows you to call erlang functions natively and throws all kinds of syntactic sugar on top of it allowing you to make additional abstractions with macros and the like. The tools that Elixir provides also make it easier to over-engineer things because it essentially gives you unlimited options when deciding how to tackle a problem, but some people like that flexibility.</p>
+
+
+
+
+<h3 id="backtotheriakelixirclientusage">Back to the Riak Elixir Client: Usage</h3>
+
+
+
+
+<p>I&#8217;ll leave the setup instructions out of this post as they are available in the <a href="http://github.com/drewkerrigan/riak-elixir-client/blob/master/README.md">README</a>. Let&#8217;s get right into some usage options.</p>
+
+
+
+
+<p>I intentionally stuck to functional programming dispatch style for this implementation. I wrote a separate client called <a href="http://github.com/drewkerrigan/elixiak">Elixiak</a> that uses object-oriented style dispatch (which is generally frowned upon by the Elixir community from what I understand, but it&#8217;s still a matter of preference).</p>
+
+
+
+
+<h4 id="connecttoriakviaprotobufs">Connect to Riak via Protobufs</h4>
+
+
+
+
+<pre><code>Riak.start
+Riak.configure(host: '127.0.0.1', port: 8087)
+</code></pre>
+
+
+
+
+<p>The <code>start</code> function starts the OTP application, and <code>configure</code> sends a message to the  OTP server running locally which starts the protobuf link with your Riak cluster.</p>
+
+
+
+
+<h4 id="crudoperations">CRUD operations</h4>
+
+
+
+
+<pre><code>u = RObj.create(bucket: "user", key: "my_key", data: "Drew Kerrigan")
+  |&gt; Riak.put
+
+u = Riak.find "user", "my_key"
+
+u = u.data("Updated Data")
+  |&gt; Riak.put
+
+Riak.delete "user", key
+</code></pre>
+
+
+
+
+<p>The <code>|&gt;</code> takes the result of the previous function and passes it as the first argument to the next function. You can also pass <code>u</code> to Riak.put like so: <code>Riak.put u</code></p>
+
+
+
+
+<h4 id="bucketprops">Bucket props</h4>
+
+
+
+
+<pre><code>Riak.Bucket.put "user", [{:notfound_ok, false}])
+
+{:ok, props} = Riak.Bucket.get "user"
+
+Riak.Bucket.reset "user"
+</code></pre>
+
+
+
+
+<p><code>:ok</code> is an Elixir atom, the equivalent of <code>ok</code> in Erlang.</p>
+
+
+
+
+<h4 id="usermetadata">User metadata</h4>
+
+
+
+
+<pre><code>u = RObj.create(bucket: "user", key: "my_key", data: "Drew Kerrigan")
+    |&gt; RObj.put_metadata({"my_key", "my_value"})
+    |&gt; RObj.put_metadata({"my_key2", "my_value2"})
+    |&gt; Riak.put
+</code></pre>
+
+
+
+
+<h4 id="secondaryindexes">Secondary indexes</h4>
+
+
+
+
+<pre><code>u = RObj.create(bucket: "user", key: key, data: "Drew Kerrigan")
+    |&gt; RObj.put_index({:binary_index, "first_name"}, ["Drew"])
+    |&gt; RObj.put_index({:binary_index, "last_name"}, ["Kerrigan"])
+    |&gt; Riak.put
+
+index = {:binary_index, "first_name"}
+query = "Drew"
+options = []
+
+{keys, terms, continuation} = Riak.Index.query("user", index, query, options)
+</code></pre>
+
+
+
+
+<p>The call to <code>Riak.Index.query</code> above is a good example of pattern matching in Elixir. The variables <code>keys</code>, <code>terms</code>, and <code>continuation</code> are bound to values returned in that order as a tuple by the <code>query</code> function. <code>terms</code> and <code>continuation</code> are relatively new features of Riak, introduced in Riak 1.4. They allow for additional information about what terms were matched in your query as well as the ability to do pagination by specifying <code>rows</code> and <code>start</code> parameters in the <code>options</code> variable.</p>
+
+
+
+
+<h4 id="links">Links</h4>
+
+
+
+
+<pre><code>u = RObj.create(bucket: "user", key: "my_key", data: "Drew Kerrigan")
+    |&gt; RObj.put_link("my_tag", "user", "drew1")
+    |&gt; RObj.put_link("my_tag", "user", "drew2")
+    |&gt; Riak.put
+</code></pre>
+
+
+
+
+<h4 id="siblings">Siblings</h4>
+
+
+
+
+<p>If you have the bucket property <code>allow_mult</code> set, you will likely encounter siblings, below is a quick example of resolving them.</p>
+
+
+
+
+<pre><code>user_value_list = Riak.find "user", key
+
+if (is_list(user_value_list)) do
+    Riak.resolve("user", key, 1)
+end
+</code></pre>
+
+
+
+
+<p>The <code>1</code> parameter corresponds to the nth entry in the list of siblings contained in <code>user_value_list</code>.</p>
+
+
+
+
+<h4 id="countersyokozunaandmapreduce">Counters, Yokozuna, and Map/Reduce</h4>
+
+
+
+
+<p>The code for these features is written, but the riak-erlang-client functionality for counters and yokozuna is still in active development and therefore unstable, so I&#8217;m waiting a bit before endorsing their use with this client library. </p>
+
+
+
+
+<p>Map/reduce functionality also exists, but I was unable to resolve a few bugs related to syntax with anonymous map and reduce functions. Feel free to try it out though, it should work fine with non-anonymous map/reduce functions in which the code already exists on your Riak nodes.</p>
+
+
+
+
+<h3 id="thatsit">That&#8217;s it!</h3>
+
+
+
+
+<p>More detailed usage examples can be found in the tests: <a href="http://github.com/drewkerrigan/riak-elixir-client/blob/master/test/riak_test.exs">http://github.com/drewkerrigan/riak-elixir-client/blob/master/test/riak_test.exs</a></p>
+
+
+
+
+<p>There will be another blog post on the way discussing the object-oriented style dispatch client library called Elixiak: <a href="http://github.com/drewkerrigan/elixiak">http://github.com/drewkerrigan/elixiak</a></p>

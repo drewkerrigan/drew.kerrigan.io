@@ -1,3 +1,7 @@
 .DS_Store
+site.hi
+site.o
+site
 _site/
+_cache/
 .sass-cache/
