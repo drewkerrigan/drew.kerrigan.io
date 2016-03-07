@@ -1,0 +1,63 @@
+/*
+------------------------------------------------------------
+|                       Form styles         
+------------------------------------------------------------
+*/
+
+body {	font-family: Arial, Helvetica,sans-serif; }
+
+#form {
+	overflow:hidden;
+	position:relative;
+}
+
+#contactform {
+	position:relative;
+}
+
+.response {
+	position:absolute;
+	top:0px;
+	right:0px;
+	text-transform:uppercase;
+	font-weight:bold;
+	font-size:11px;
+}
+
+.form_error {
+	color:red;
+}
+
+.form_sent {
+	color:green;
+}
+
+#contactform label {
+	width:100px;
+	display:block;
+	margin-bottom:10px;
+	text-transform:uppercase;
+	font-weight:bold;
+	font-size:11px;
+}
+
+#contactform input,
+#contactform textarea {
+	padding:5px;
+	background:#ddd;
+	-moz-border-radius:5px;
+	-webkit-border-radius:5px;
+	border:0 none;
+	font-family: Arial, Helvetica,sans-serif;
+	font-size:15px;
+}
+
+#contactform textarea {
+	height:100px;
+	width:230px;
+}
+
+#contactform #submit_btn {
+	margin-top:10px;
+	cursor:pointer;
+}

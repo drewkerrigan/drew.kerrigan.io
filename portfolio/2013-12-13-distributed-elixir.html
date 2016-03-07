@@ -1,0 +1,364 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <meta name="author" content="@drewkerrigan" />
+        <meta name="viewport" content="width=device-width" />
+        <meta http-equiv="Cache-Control" content="max-age=86400, must-revalidate" />
+        <title>drew.kerrigan.io</title>
+        <link rel="stylesheet" href="../css/base.min.css" type="text/css" />
+        <link rel="stylesheet" href="../css/github.min.css" type="text/css" />
+        <link rel="stylesheet" href="../css/octicons.css" type="text/css" />
+    </head>
+    <body>
+        <div class="header-container">
+            <header>
+                <ul class="nav">
+                    <!--Change the  URL here if working on an absolute domain-->
+                    <li><a href="../"><span class="mega-octicon octicon-terminal" style="margin-right: 6px;"></span>drew.</a><a href="http://kerrigan.io"><span style="margin-right: 6px;"></span>kerrigan.io</a></li>
+                    <li><a href="../cv"><span class="mega-octicon octicon-person" style="margin-right: 6px;"></span>About</a></li>
+                </ul>
+            </header>
+        </div>
+
+        <div class="container">
+            <p class="meta">December 13, 2013 by by name: "Drew Kerrigan"</p>
+
+<div class="post">
+    <h3 id="elixir-looks-cool-what-does-distributed-elixir-look-like">“Elixir looks cool, what does distributed elixir look like?”</h3>
+<p>One common question that I’ve received when talking to people about <a href="http://elixir-lang.org/">Elixir</a> is <code>&quot;what does distributed elixir look like?&quot;</code> This post uses code I wrote for <a href="http://erlangdc.org/">Erlangdc</a> R13B this year. It’s essentially the same content as the slides for my talk ( <a href="http://kerrigan.io/erlangdc/#/">kerrigan.io/erlangdc</a> ) if you prefer that format.</p>
+<h3 id="getting-started">Getting Started</h3>
+<h4 id="create-an-otp-application">Create an OTP application</h4>
+<p>When you create a default application with mix (as of 0.11.*) it will create an OTP application along with a supervisor skeleton for you.</p>
+<p><code>mix new ex_messenger</code></p>
+<p>Application: <code>lib/ex_messenger.ex</code></p>
+<p>Supervisor: <code>lib/ex_messenger/supervisor.ex</code></p>
+<p>Here’s what <code>lib/ex_messenger/supervisor.ex</code> looks like without modifications:</p>
+<pre><code>def init([]) do
+children = [
+    # Define workers and child supervisors to be supervised
+    # worker(ExMessenger.Worker, [])
+]
+
+# See http://elixir-lang.org/docs/stable/   Supervisor.Behaviour.html
+# for other strategies and supported options
+supervise(children, strategy: :one_for_one)
+end</code></pre>
+<p>As you can see, the application has a supervisor, but doesn’t have anything to supervise yet, lets go ahead and add a reference to a worker we’ll call <code>ExMessenger.Server</code></p>
+<pre><code>def init([]) do
+  # Define workers and child supervisors to be supervised
+  children = [ worker(ExMessenger.Server, [[]]) ]
+  supervise children, strategy: :one_for_one
+end</code></pre>
+<h4 id="create-a-gen-server">Create a (gen) server</h4>
+<p>Create a new file at lib/ex_messenger/server.ex</p>
+<h5 id="respond-to-calls-connect-and-disconnect">Respond to calls: connect and disconnect</h5>
+<pre><code>defmodule ExMessenger.Server do
+  use GenServer.Behaviour
+
+  def start_link([]) do
+      :gen_server.start_link({ :local, :message_server }, __MODULE__, [], [])
+  end
+
+  def init([]) do
+      { :ok, HashDict.new() }
+  end
+
+  def handle_call({:connect, nick}, {pid, _}, users) do
+      newusers = users |&gt; HashDict.put(nick, node(pid))
+      userlist = newusers |&gt; HashDict.keys |&gt; Enum.join &quot;:&quot;
+      {:reply, {:ok, userlist}, newusers}
+  end
+
+  def handle_call({:disconnect, nick}, {pid, _}, users) do
+      newusers = users |&gt; HashDict.delete nick
+      {:reply, :ok, newusers}
+  end
+
+  def handle_call(_, _, users), do: {:reply, :error, users}
+
+  def handle_cast(_, users), do: {:noreply, users}
+end</code></pre>
+<p>I won’t go into the details of what a gen_server or behaviour is because it’s out of the scope for this post, but feel free to dig into Erlang OTP and gen_servers here: <a href="http://www.erlang.org/doc/design_principles/gen_server_concepts.html">erlang.org/doc/design_principles/gen_server_concepts.html</a></p>
+<p>In the code above, there are 3 things to note:</p>
+<ol>
+<li><code>{:ok, HashDict.new()}</code>: This is the initial state of our chat server. We need our server to keep track of all of the connected users, and we can pretty easily do so with a <code>HashDict</code>.</li>
+<li><code>newusers = users |&gt; HashDict.put(nick, node(pid))</code>: When we receive a call from a client to connect to the chat server, we’ll add them to the <code>HashDict</code> of users.</li>
+<li><code>newusers = users |&gt; HashDict.delete nick</code>: As you might expect, when we get a <code>disconnect</code> call, that client is removed from the list.</li>
+</ol>
+<p>One more thing: The key for the HashDict records is the client’s nickname, and the values are the erlang node names. An example nodename might be <code>&quot;client@192.168.1.10&quot;</code></p>
+<h5 id="broadcast-a-message-to-all-clients">Broadcast a message to all clients</h5>
+<p>Here is what a broadcast function might look like</p>
+<pre><code>defp broadcast(users, from, msg) do
+  Enum.each(users, fn { _, node } -&gt; :gen_server.cast({:message_handler, node}, {:message, from, msg}) end)
+end</code></pre>
+<p>Here we are applying an operation to each member of the users HashDict. We’re sending a gen_server call to a registered server called <code>:message_handler</code> that doesn’t exist yet, but it will once we create the client.</p>
+<h5 id="respond-to-calls-say-and-private_message">Respond to calls: say and private_message</h5>
+<pre><code>def handle_cast({:say, nick, msg}, users) do
+  ears = HashDict.delete(users, nick)
+  broadcast(ears, nick, &quot;#{msg}&quot;)
+
+  {:noreply, users}
+end
+
+def handle_cast({:private_message, nick, receiver, msg}, users) do
+  case users |&gt; HashDict.get receiver do
+      nil -&gt; :ok
+      r -&gt;
+          :gen_server.cast({:message_handler, r}, {:message, nick, &quot;(#{msg})&quot;})
+  end
+  {:noreply, users}
+end</code></pre>
+<p>We are defining the <code>:say</code> cast to just be a broadcast of <code>msg</code> from <code>nick</code> to all connected users.</p>
+<p>The <code>:private_message</code> cast is the important bit from the broadcast function above, but with only a single target.</p>
+<p>The reason for choosing <code>handle_cast</code> over <code>handle_call</code> for these is that they do not modify the state of the server, and therefore shouldn’t require responses to the client that sent them.</p>
+<h4 id="chat-server-code">Chat Server Code</h4>
+<p>The code thus far can be found at <a href="https://github.com/drewkerrigan/ex_messenger">github.com/drewkerrigan/ex_messenger</a>. Please check it out and try to run it, the above code is simplified and missing a few important validation pieces like making sure two clients with the same name cannot connect.</p>
+<h4 id="running-the-server">Running the Server</h4>
+<p>For local testing:</p>
+<pre><code>iex --sname server --cookie chocolate-chip -S mix</code></pre>
+<p>For external testing (find your LAN ip with <code>ifconfig</code>):</p>
+<pre><code>iex --name server@ --cookie chocolate-chip -S mix</code></pre>
+<p>Full Code: <a href="https://github.com/drewkerrigan/ex_messenger">ex_messenger</a></p>
+<h3 id="cli-client">(CLI) Client</h3>
+<p>Create a new mix project with the —bare flag</p>
+<pre><code>mix new ex_messenger_client --bare</code></pre>
+<p>This generates a simple application with lib/ex_messenger_client.ex</p>
+<pre><code>defmodule ExMessengerClient do
+end</code></pre>
+<h4 id="process-server-calls">Process Server Calls</h4>
+<p>We will get to the CLI application soon, but first lets respond to calls from the server</p>
+<p>lib/ex_messenger_client.ex</p>
+<pre><code>defmodule ExMessengerClient do
+end
+
+defmodule ExMessengerClient.MessageHandler do
+  use GenServer.Behaviour
+
+  def start_link(server) do
+      :gen_server.start_link({ :local, :message_handler }, __MODULE__, server, [])
+  end
+
+  def init(server) do
+      { :ok, server }
+  end
+
+  def handle_call(_, _, server), do: {:reply, :error, server}
+
+  def handle_cast({:message, nick, msg}, server) do
+      msg = String.rstrip(msg)
+      IO.puts &quot;\n#{server}&gt; #{nick}: #{msg}&quot;
+      IO.write &quot;#{Node.self()}&gt; &quot;
+      {:noreply, server}
+  end
+
+  def handle_cast(_, server), do: {:noreply, server}
+end</code></pre>
+<h4 id="cli-application">CLI Application</h4>
+<pre><code>defmodule ExMessengerClient do
+
+  def main(args) do
+      args |&gt; parse_args |&gt; process
+  end
+
+  def parse_args(args) do
+      switches =
+          [
+          help: :boolean,
+          server: :string,
+          nick: :string
+          ]
+
+      aliases =
+          [
+          h: :help,
+          s: :server,
+          n: :nick
+          ]
+
+      options = OptionParser.parse(args, switches: switches, aliases: aliases)
+
+      case options do
+          { [ help: true], _, _}            -&gt; :help
+          { [ server: server], _, _}        -&gt; [server]
+          { [ server: server, nick: nick], _, _} -&gt; [server, nick]
+          _                                 -&gt; []
+      end
+  end
+
+  def process(:help) do
+      IO.puts &quot;&quot;&quot;
+          Usage:
+          ./ex_messenger_client -s server_name [-n nickname]
+
+          Options:
+          -s, --server = fully qualified server name
+          -n, --nick   = nickname (optional, you will be promted if not specified)
+
+          Example:
+          ./ex_messenger_client -s server@192.168.1.1 -n dr00
+
+          Options:
+          -h, [--help]      # Show this help message and quit.
+      &quot;&quot;&quot;
+      System.halt(0)
+  end
+
+  def process([]) do
+      process([nil, nil])
+  end
+
+  def process([server]) do
+      process([server, nil])
+  end
+
+  def process([server, nick]) do
+      server = case server do
+          nil -&gt;
+          IO.write &quot;Server Name: &quot;
+          IO.read :line
+          n -&gt; n
+      end
+
+      server = list_to_atom(bitstring_to_list(String.rstrip(server)))
+
+      IO.puts &quot;Connecting to #{server} from #{Node.self()}...&quot;
+      Node.set_cookie(Node.self(), :&quot;chocolate-chip&quot;)
+      case Node.connect(server) do
+          true -&gt; :ok
+          reason -&gt;
+              IO.puts &quot;Could not connect to server, reason: #{reason}&quot;
+              System.halt(0)
+      end
+
+      ExMessengerClient.MessageHandler.start_link(server)
+
+      IO.puts &quot;Connected&quot;
+
+      nick = case nick do
+          nil -&gt;
+          IO.write &quot;Nickname: &quot;
+          IO.read :line
+          n -&gt; n
+      end
+
+      nick = String.rstrip(nick)
+
+      case :gen_server.call({:message_server, server}, {:connect, nick}) do
+          {:ok, users} -&gt;
+              IO.puts &quot;**Joined the chatroom**&quot;
+              IO.puts &quot;**Users in room: #{users}**&quot;
+              IO.puts &quot;**Type /help for options**&quot;
+          reason -&gt;
+              IO.puts &quot;Could not join chatroom, reason: #{reason}&quot;
+              System.halt(0)
+      end
+
+      # Start gen_server to handle input / output from server
+      input_loop([server, nick])
+  end
+
+  def input_loop([server, nick]) do
+      IO.write &quot;#{Node.self()}&gt; &quot;
+      command = IO.read :line
+      handle_command(command, [server, nick])
+
+      input_loop([server, nick])
+  end
+
+  def handle_command(command, [server, nick]) do
+      command = String.rstrip(command)
+      case command do
+          &quot;/help&quot; -&gt;
+              IO.puts &quot;&quot;&quot;
+                  Avaliable commands:
+                  /leave
+                  /join
+                  /pm  
+                  or just type a message to send
+              &quot;&quot;&quot;
+          &quot;/leave&quot; -&gt;
+              :gen_server.call({:message_server, server}, {:disconnect, nick})
+              IO.puts &quot;You have exited the chatroom, you can rejoin with /join or quit with -c a&quot;
+          &quot;/join&quot; -&gt;
+              IO.inspect :gen_server.call({:message_server, server}, {:connect, nick})
+              IO.puts &quot;Joined the chatroom&quot;
+          &quot;&quot; -&gt;
+              :ok
+          nil -&gt;
+              :ok
+          message -&gt;
+              if String.contains? message, &quot;/pm&quot; do
+                  [to|message] = String.split(String.slice(message, 4..-1))
+                  message = String.lstrip(List.foldl(message, &quot;&quot;, fn(x, acc) -&gt; &quot;#{acc} #{x}&quot; end))
+                  :gen_server.cast({:message_server, server}, {:private_message, nick, to, message})
+              else
+                  :gen_server.cast({:message_server, server}, {:say, nick, message})
+          end
+      end
+  end
+end</code></pre>
+<h4 id="mix.exs-changes">Mix.exs changes</h4>
+<p>We also need to make a change to mix.exs for the CLI application to work properly</p>
+<p>mix.exs</p>
+<pre><code>def project do
+  node = System.get_env(&quot;node&quot;)
+  node = case node do
+      nil -&gt; &quot;client&quot;
+      n -&gt; n
+  end
+
+  mode = System.get_env(&quot;mode&quot;)
+  mode = case mode do
+      nil -&gt; &quot;-sname&quot;
+      &quot;external&quot; -&gt; &quot;-name&quot;
+  end
+
+  [ app: :ex_messenger_client,
+  version: &quot;0.0.1&quot;,
+  deps: deps,
+  escript_emu_args: &quot;%%!#{mode} #{node}\n&quot;]
+end
+...</code></pre>
+<h3 id="makefile">Makefile</h3>
+<p>In order to compile the escript for multiple clients quickly, I also made a Makefile to make things faster</p>
+<p>Makefile</p>
+<pre><code>.PHONY: all
+
+all:
+mix
+
+run:
+rm -f ex_messenger_client
+mix escriptize
+./ex_messenger_client</code></pre>
+<h4 id="running-the-client">Running the Client</h4>
+<p>For local testing:</p>
+<pre><code>node=client make run</code></pre>
+<p>For external testing (find your LAN ip with <code>ifconfig</code>):</p>
+<pre><code>mode=external node=client@ make run</code></pre>
+<p>Note: Mode and Node are 2 different env variables</p>
+<p>Full Code: <a href="https://github.com/drewkerrigan/ex_messenger_client">ex_messenger_client</a></p>
+<h2 id="thanks-for-reading">Thanks for Reading!</h2>
+<h3 id="resources">Resources</h3>
+<ul>
+<li><p>Chat Server: <a href="https://github.com/drewkerrigan/ex_messenger">ex_messenger</a></p></li>
+<li><p>Client: <a href="https://github.com/drewkerrigan/ex_messenger_client">ex_messenger_client</a></p></li>
+</ul>
+</div>
+
+        </div>
+    </body>
+
+    <script>
+     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+                              m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+     })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+     ga('create', 'UA-57872143-1', 'auto');
+     ga('send', 'pageview');
+
+    </script>
+</html>
