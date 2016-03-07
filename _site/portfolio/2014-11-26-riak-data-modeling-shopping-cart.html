@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <meta name="author" content="@drewkerrigan" />
+        <meta name="viewport" content="width=device-width" />
+        <meta http-equiv="Cache-Control" content="max-age=86400, must-revalidate" />
+        <title>drew.kerrigan.io</title>
+        <link rel="stylesheet" href="../css/base.min.css" type="text/css" />
+        <link rel="stylesheet" href="../css/github.min.css" type="text/css" />
+        <link rel="stylesheet" href="../css/octicons.css" type="text/css" />
+    </head>
+    <body>
+        <div class="header-container">
+            <header>
+                <ul class="nav">
+                    <!--Change the  URL here if working on an absolute domain-->
+                    <li><a href="../"><span class="mega-octicon octicon-terminal" style="margin-right: 6px;"></span>drew.</a><a href="http://kerrigan.io"><span style="margin-right: 6px;"></span>kerrigan.io</a></li>
+                    <li><a href="../cv"><span class="mega-octicon octicon-person" style="margin-right: 6px;"></span>About</a></li>
+                </ul>
+            </header>
+        </div>
+
+        <div class="container">
+            <p class="meta">November 26, 2014 by by name: "Drew Kerrigan"</p>
+
+<div class="post">
+    <h1 id="riak-data-modeling-shopping-cart">Riak Data Modeling: Shopping Cart</h1>
+<h2 id="what-is-it">What is it?</h2>
+<p>The goal of this post is to describe a few data structures and techniques for creating an online shopping cart using Riak as a data store. There are three main pieces of a basic ecommerce data model:</p>
+<ol style="list-style-type: decimal">
+<li>Product Data</li>
+<li>Inventory Data</li>
+<li>Shopping Cart Data</li>
+</ol>
+<h3 id="product-data">Product Data</h3>
+<h4 id="sample-object">Sample Object</h4>
+<pre><code>{
+  &quot;sku&quot;: &quot;abc123&quot;,
+  &quot;name&quot;: &quot;Awesome T-Shirt&quot;,
+  &quot;categories&quot;: [&quot;clothing/mens/shirts&quot;, &quot;clothing/womens/shirts&quot;],
+  &quot;inventory&quot;: [&quot;14418796&quot;, &quot;14418797&quot;]
+}</code></pre>
+<h4 id="bucket-configuration">Bucket Configuration</h4>
+<p>The product data needs to be searchable by users in general, but we also need to build product navigation using this data. For instance we would like to get a listing of all top level categories, and then drill down into sub-categories. Due to these requirements, the Riak bucket / bucket type should be configured with Riak Search. Additionally, we should use Riak Datatypes to ease concerns around multiple actors changing product data.</p>
+<h5 id="create-schema">Create Schema</h5>
+<p>(Based on default Yokozuna Solr Schema with our own field definitions, the default schema can be found here: <a href="https://raw.githubusercontent.com/basho/yokozuna/develop/priv/default_schema.xml" class="uri">https://raw.githubusercontent.com/basho/yokozuna/develop/priv/default_schema.xml</a>)</p>
+<p>Create a <code>product_schema.xml</code> based on the default schema:</p>
+<pre><code>...
+&lt;field name=&quot;sku_register&quot; type=&quot;string&quot; indexed=&quot;true&quot; stored=&quot;true&quot; multiValued=&quot;false&quot;/&gt;
+&lt;field name=&quot;name_register&quot; type=&quot;string&quot; indexed=&quot;true&quot; stored=&quot;true&quot;  multiValued=&quot;false&quot;/&gt;
+&lt;field name=&quot;categories_set&quot; type=&quot;string&quot; indexed=&quot;true&quot; stored=&quot;true&quot; multiValued=&quot;true&quot;/&gt;
+...</code></pre>
+<p>Note that all map values (such as strings, integers, dates, etc) are named as _register when they get to Solr. All registers can only be represented as strings, so in order to make Solr treat them as something else (like an integer), they need to have their own fields in a custom schema.</p>
+<pre><code>curl -XPUT &quot;http://localhost:8098/search/schema/product_schema&quot; \
+  -H 'content-type:application/xml' \
+  --data-binary @product_schema.xml</code></pre>
+<h5 id="create-a-search-index-using-your-schema">Create a search index using your schema</h5>
+<pre><code>curl -XPUT &quot;http://localhost:8098/search/index/product_index&quot; \
+     -H'content-type:application/json' \
+     -d'{&quot;schema&quot;:&quot;product_schema&quot;}'</code></pre>
+<h5 id="create-a-bucket-type-so-that-multiple-buckets-can-share-an-index-as-well-as-be-treated-as-crdt-maps">Create a bucket type so that multiple buckets can share an index as well as be treated as CRDT Maps</h5>
+<pre><code>riak-admin bucket-type create product_type '{&quot;props&quot;:{&quot;search_index&quot;:&quot;product_index&quot;,&quot;datatype&quot;:&quot;map&quot;}}'
+riak-admin bucket-type activate product_type</code></pre>
+<h5 id="add-data">Add data</h5>
+<pre><code>curl -XPOST http://localhost:8098/types/product_type/buckets/products/datatypes/product1 \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '
+  {
+    &quot;update&quot;: {
+      &quot;sku_register&quot;: &quot;abc123&quot;,
+      &quot;name_register&quot;: &quot;Awesome T-Shirt&quot;,
+      &quot;categories_set&quot;: {
+        &quot;add_all&quot;: [&quot;clothing/mens/shirts&quot;, &quot;clothing/womens/shirts&quot;]
+      },
+      &quot;inventory_set&quot;: {
+        &quot;add_all&quot;: [&quot;14418796&quot;, &quot;14418797&quot;]
+      }
+    }
+  }'</code></pre>
+<h5 id="search-for-data">Search for data</h5>
+<pre><code>curl 'http://localhost:8098/search/query/product_index?wt=json&amp;q=sku_register:abc123'</code></pre>
+<h4 id="product-navigation">Product Navigation</h4>
+<p>To create a list of categories and sub-categories for navigation, solr facet queries can be used against the indexed product data. Most solr queries, including category listing, can and should be cached in Riak. Caching these results will reduce load on the cluster and promote better overall throughput.</p>
+<p>It is also possible to allow for full text search over all products, but doing so could impact cluster performance if the functionality is not severly limited. One approach to solving this problem might be to pre-cache results for common key words and auto-suggest those keywords to the user as they type a query.</p>
+<p>Example solr facet query to build category navigation:</p>
+<pre><code>curl 'http://localhost:8098/search/query/product_index?wt=json&amp;q=*:*&amp;facet=true&amp;facet.field=categories_set'</code></pre>
+<p>This should return something similar to this result:</p>
+<pre><code>{
+  &quot;facet_fields&quot;: {
+    &quot;categories_set&quot;: [
+      &quot;clothing/mens/shirts&quot;, 1,
+      &quot;clothing/womens/shirts&quot;, 1 ]
+  }
+}</code></pre>
+<h3 id="inventory-data">Inventory Data</h3>
+<h4 id="sample-object-1">Sample Object</h4>
+<pre><code>{
+  &quot;id&quot;: &quot;14418796&quot;,
+  &quot;sku&quot;: &quot;abc123&quot;,
+  &quot;color&quot;: &quot;Black&quot;,
+  &quot;size&quot;: &quot;S&quot;,
+  &quot;returnable&quot;: false,
+  &quot;price&quot;: 32.00,
+  &quot;remaining&quot;: 12
+}</code></pre>
+<h4 id="bucket-configuration-1">Bucket Configuration</h4>
+<p>The primary differentiating requirement for inventory data is that the amount remaining needs to be accurate. Depending on the actual online-store use-case specifics, there are a variety of ways to tackle this problem.</p>
+<p>If the store is selling something such as limited seats to a concert, a “leasing” mechanism may be required. Riak currently does not support time-based leasing, so a practical approach might be to combine Riak with something that does such as Apache Zookeeper.</p>
+<p>If the store’s revenue will not be severly impacted when a user can add something to a cart but then find out that the last item has been sold to someone else, Riak alone can be used. We will focus on this configuration for this guide. A strongly consistent bucket is suggested for this type of data as well as serialized writes to ensure a positive user experience when modifying inventory data. Inventory count and attributes can actually be segregated into separate buckets but that is an optimization for a later time.</p>
+<h5 id="create-a-bucket-type">Create a bucket type</h5>
+<pre><code>riak-admin bucket-type create inventory_type '{&quot;props&quot;:{&quot;consistent&quot;:true}}'
+riak-admin bucket-type status inventory_type # Wait until this displays &quot;inventory_type has been created and may be activated&quot;
+riak-admin bucket-type activate inventory_type</code></pre>
+<h5 id="add-data-1">Add data</h5>
+<p>When creating new entries in a strongly consistent bucket, no context needs to be provided.</p>
+<pre><code>curl -XPOST http://localhost:8098/types/inventory_type/buckets/inventory/keys/14418796 \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '
+  {
+    &quot;id&quot;: &quot;14418796&quot;,
+    &quot;sku&quot;: &quot;abc123&quot;,
+    &quot;color&quot;: &quot;Black&quot;,
+    &quot;size&quot;: &quot;S&quot;,
+    &quot;returnable&quot;: false,
+    &quot;price&quot;: 32.00,
+    &quot;remaining&quot;: 12
+  }'</code></pre>
+<h5 id="get-data">Get data</h5>
+<p>Getting data out of a strongly consistent bucket should return a “context” value. All updates to the object in the future should use the current context value, otherwise the write will fail. The typical workflow would be:</p>
+<ol style="list-style-type: decimal">
+<li>Read the object or do a head to find the current context</li>
+<li>Modify the object locally</li>
+<li>Put the data back to the same key using the context from step 1</li>
+</ol>
+<pre><code>curl 'http://localhost:8098/types/inventory_type/buckets/inventory/keys/14418796'</code></pre>
+<h3 id="shopping-cart-data">Shopping Cart Data</h3>
+<p>Shopping cart objects are fairly simple; They are essentially just a set of inventory ids and quantities. The only tricky part is expiring the data since shopping carts are typically transient, especially if a shopping cart is created by an anonymous user. To facilitate easy editing of the cart contents by users or administrators, the suggested approach is using Riak Datatypes with a Set type for the list of cart items.</p>
+<h4 id="sample-object-2">Sample Object</h4>
+<pre><code>{
+  &quot;user&quot;: &quot;drewkerrigan&quot;,
+  &quot;expire_time&quot;: &quot;2009-09-11T08:00:00-07:00&quot;,
+  &quot;items&quot;: [{&quot;id&quot;: &quot;14418796&quot;,&quot;quantity&quot;: 1}]
+}</code></pre>
+<h4 id="bucket-configuration-2">Bucket Configuration</h4>
+<h5 id="create-a-bucket-type-1">Create a bucket type</h5>
+<pre><code>riak-admin bucket-type create cart_type '{&quot;props&quot;:{&quot;datatype&quot;:&quot;map&quot;}}'
+riak-admin bucket-type activate cart_type</code></pre>
+<h5 id="add-data-2">Add data</h5>
+<pre><code>curl -XPOST http://localhost:8098/types/cart_type/buckets/cart/datatypes/drewkerrigan \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '
+  {
+    &quot;update&quot;: {
+      &quot;user_register&quot;: &quot;drewkerrigan&quot;,
+      &quot;expire_time_register&quot;: &quot;2009-09-11T08:00:00-07:00&quot;,
+      &quot;items_set&quot;: {
+        &quot;add_all&quot;: [&quot;{\&quot;id\&quot;: \&quot;14418796\&quot;,\&quot;quantity\&quot;: 1}&quot;]
+      }
+    }
+  }'</code></pre>
+<h5 id="get-data-1">Get data</h5>
+<pre><code>curl 'http://localhost:8098/types/cart_type/buckets/cart/datatypes/drewkerrigan'</code></pre>
+<h5 id="expiring-data">Expiring data</h5>
+<p>There are multiple ways to expire old cart data. One fairly easy mechanism (assuming a bounded number of shopping carts), is to index the cart bucket with Riak Search and periodically query for all cart objects older than X timestamp on a scheduled basis, and subsequently deleting those objects. Another less impactful method would be to use bitcask expiry <a href="http://docs.basho.com/riak/latest/ops/advanced/backends/bitcask/" class="uri">http://docs.basho.com/riak/latest/ops/advanced/backends/bitcask/</a>. An additional catch layer should be added in addition to backend exiry however: whenever a user attempts to read their cart object, a check should be done on the expire_time field to see if it is old and needs to be cleared, although this is dependent on the actual use-case.</p>
+</div>
+
+        </div>
+    </body>
+
+    <script>
+     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+                              m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+     })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+     ga('create', 'UA-57872143-1', 'auto');
+     ga('send', 'pageview');
+
+    </script>
+</html>

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <meta name="author" content="@drewkerrigan" />
+        <meta name="viewport" content="width=device-width" />
+        <meta http-equiv="Cache-Control" content="max-age=86400, must-revalidate" />
+        <title>drew.kerrigan.io</title>
+        <link rel="stylesheet" href="../css/base.min.css" type="text/css" />
+        <link rel="stylesheet" href="../css/github.min.css" type="text/css" />
+        <link rel="stylesheet" href="../css/octicons.css" type="text/css" />
+    </head>
+    <body>
+        <div class="header-container">
+            <header>
+                <ul class="nav">
+                    <!--Change the  URL here if working on an absolute domain-->
+                    <li><a href="../"><span class="mega-octicon octicon-terminal" style="margin-right: 6px;"></span>drew.</a><a href="http://kerrigan.io"><span style="margin-right: 6px;"></span>kerrigan.io</a></li>
+                    <li><a href="../cv"><span class="mega-octicon octicon-person" style="margin-right: 6px;"></span>About</a></li>
+                </ul>
+            </header>
+        </div>
+
+        <div class="container">
+            <p class="meta">September 25, 2013 by by name: "Drew Kerrigan"</p>
+
+<div class="post">
+    <p>An Elixir wrapper for riak-erlang-client.</p>
+<h3 id="whatiselixir">What is Elixir?</h3>
+<p>From <a href="http://elixir-lang.org/" class="uri">http://elixir-lang.org/</a>:</p>
+<blockquote>
+<p>Elixir is a functional, meta-programming aware language built on top of the Erlang VM. It is a dynamic language with flexible syntax and macro support that leverages Erlang’s abilities to build concurrent, distributed and fault-tolerant applications with hot code upgrades.</p>
+</blockquote>
+<h3 id="okbutwhatswrongwitherlang">Ok… But what’s wrong with Erlang?</h3>
+<p>Absolutely nothing.</p>
+<p>Some have made the argument that Elixir’s ruby-like syntax is better than Erlang’s, but I don’t buy that. Elixir is still a functional language just like Erlang, and if you don’t like the way things are done in one, you probably won’t like the other. The choice between Elixir and Erlang is a matter of preference in how you like to express ideas through code.</p>
+<p>I love the simplicity of Erlang’s syntax and data types for a lot of problems. For instance it makes sending raw messages from process to process look nice and clean no matter what machine each process happens to be running on. Elixir allows you to call erlang functions natively and throws all kinds of syntactic sugar on top of it allowing you to make additional abstractions with macros and the like. The tools that Elixir provides also make it easier to over-engineer things because it essentially gives you unlimited options when deciding how to tackle a problem, but some people like that flexibility.</p>
+<h3 id="backtotheriakelixirclientusage">Back to the Riak Elixir Client: Usage</h3>
+<p>I’ll leave the setup instructions out of this post as they are available in the <a href="http://github.com/drewkerrigan/riak-elixir-client/blob/master/README.md">README</a>. Let’s get right into some usage options.</p>
+<p>I intentionally stuck to functional programming dispatch style for this implementation. I wrote a separate client called <a href="http://github.com/drewkerrigan/elixiak">Elixiak</a> that uses object-oriented style dispatch (which is generally frowned upon by the Elixir community from what I understand, but it’s still a matter of preference).</p>
+<h4 id="connecttoriakviaprotobufs">Connect to Riak via Protobufs</h4>
+<pre><code>Riak.start
+Riak.configure(host: '127.0.0.1', port: 8087)</code></pre>
+<p>The <code>start</code> function starts the OTP application, and <code>configure</code> sends a message to the OTP server running locally which starts the protobuf link with your Riak cluster.</p>
+<h4 id="crudoperations">CRUD operations</h4>
+<pre><code>u = RObj.create(bucket: &quot;user&quot;, key: &quot;my_key&quot;, data: &quot;Drew Kerrigan&quot;)
+  |&gt; Riak.put
+
+u = Riak.find &quot;user&quot;, &quot;my_key&quot;
+
+u = u.data(&quot;Updated Data&quot;)
+  |&gt; Riak.put
+
+Riak.delete &quot;user&quot;, key</code></pre>
+<p>The <code>|&gt;</code> takes the result of the previous function and passes it as the first argument to the next function. You can also pass <code>u</code> to Riak.put like so: <code>Riak.put u</code></p>
+<h4 id="bucketprops">Bucket props</h4>
+<pre><code>Riak.Bucket.put &quot;user&quot;, [{:notfound_ok, false}])
+
+{:ok, props} = Riak.Bucket.get &quot;user&quot;
+
+Riak.Bucket.reset &quot;user&quot;</code></pre>
+<p><code>:ok</code> is an Elixir atom, the equivalent of <code>ok</code> in Erlang.</p>
+<h4 id="usermetadata">User metadata</h4>
+<pre><code>u = RObj.create(bucket: &quot;user&quot;, key: &quot;my_key&quot;, data: &quot;Drew Kerrigan&quot;)
+    |&gt; RObj.put_metadata({&quot;my_key&quot;, &quot;my_value&quot;})
+    |&gt; RObj.put_metadata({&quot;my_key2&quot;, &quot;my_value2&quot;})
+    |&gt; Riak.put</code></pre>
+<h4 id="secondaryindexes">Secondary indexes</h4>
+<pre><code>u = RObj.create(bucket: &quot;user&quot;, key: key, data: &quot;Drew Kerrigan&quot;)
+    |&gt; RObj.put_index({:binary_index, &quot;first_name&quot;}, [&quot;Drew&quot;])
+    |&gt; RObj.put_index({:binary_index, &quot;last_name&quot;}, [&quot;Kerrigan&quot;])
+    |&gt; Riak.put
+
+index = {:binary_index, &quot;first_name&quot;}
+query = &quot;Drew&quot;
+options = []
+
+{keys, terms, continuation} = Riak.Index.query(&quot;user&quot;, index, query, options)</code></pre>
+<p>The call to <code>Riak.Index.query</code> above is a good example of pattern matching in Elixir. The variables <code>keys</code>, <code>terms</code>, and <code>continuation</code> are bound to values returned in that order as a tuple by the <code>query</code> function. <code>terms</code> and <code>continuation</code> are relatively new features of Riak, introduced in Riak 1.4. They allow for additional information about what terms were matched in your query as well as the ability to do pagination by specifying <code>rows</code> and <code>start</code> parameters in the <code>options</code> variable.</p>
+<h4 id="links">Links</h4>
+<pre><code>u = RObj.create(bucket: &quot;user&quot;, key: &quot;my_key&quot;, data: &quot;Drew Kerrigan&quot;)
+    |&gt; RObj.put_link(&quot;my_tag&quot;, &quot;user&quot;, &quot;drew1&quot;)
+    |&gt; RObj.put_link(&quot;my_tag&quot;, &quot;user&quot;, &quot;drew2&quot;)
+    |&gt; Riak.put</code></pre>
+<h4 id="siblings">Siblings</h4>
+<p>If you have the bucket property <code>allow_mult</code> set, you will likely encounter siblings, below is a quick example of resolving them.</p>
+<pre><code>user_value_list = Riak.find &quot;user&quot;, key
+
+if (is_list(user_value_list)) do
+    Riak.resolve(&quot;user&quot;, key, 1)
+end</code></pre>
+<p>The <code>1</code> parameter corresponds to the nth entry in the list of siblings contained in <code>user_value_list</code>.</p>
+<h4 id="countersyokozunaandmapreduce">Counters, Yokozuna, and Map/Reduce</h4>
+<p>The code for these features is written, but the riak-erlang-client functionality for counters and yokozuna is still in active development and therefore unstable, so I’m waiting a bit before endorsing their use with this client library.</p>
+<p>Map/reduce functionality also exists, but I was unable to resolve a few bugs related to syntax with anonymous map and reduce functions. Feel free to try it out though, it should work fine with non-anonymous map/reduce functions in which the code already exists on your Riak nodes.</p>
+<h3 id="thatsit">That’s it!</h3>
+<p>More detailed usage examples can be found in the tests: <a href="http://github.com/drewkerrigan/riak-elixir-client/blob/master/test/riak_test.exs" class="uri">http://github.com/drewkerrigan/riak-elixir-client/blob/master/test/riak_test.exs</a></p>
+<p>There will be another blog post on the way discussing the object-oriented style dispatch client library called Elixiak: <a href="http://github.com/drewkerrigan/elixiak" class="uri">http://github.com/drewkerrigan/elixiak</a></p>
+</div>
+
+        </div>
+    </body>
+
+    <script>
+     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+                              m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+     })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+     ga('create', 'UA-57872143-1', 'auto');
+     ga('send', 'pageview');
+
+    </script>
+</html>
