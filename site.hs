@@ -2,13 +2,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 import           Data.Monoid (mappend)
 import           Hakyll
-import 			 Control.Applicative
+import           Control.Applicative
 
 
 --------------------------------------------------------------------------------
 main :: IO ()
 main = hakyll $ do
-    match "images/*" $ do
+    match ("images/*" .||. "js/*" .||. "cv/*" .||. "cv/*/*") $ do
         route   idRoute
         compile copyFileCompiler
 
@@ -16,8 +16,8 @@ main = hakyll $ do
         route   idRoute
         compile compressCssCompiler
 
-    match "js/*" $ do
-        route   idRoute
+    match "css/images/*" $ do
+        route $ gsubRoute "images/" (const "")
         compile copyFileCompiler
 
     match "portfolio/*" $ do
@@ -40,7 +40,6 @@ main = hakyll $ do
                 >>= loadAndApplyTemplate "templates/archive.html" archiveCtx
                 >>= loadAndApplyTemplate "templates/default.html" archiveCtx
                 >>= relativizeUrls
-
 
     match "index.html" $ do
         route idRoute
@@ -67,11 +66,11 @@ postCtx =
 
 siteCtx :: Context String
 siteCtx = 
-	activeClassField `mappend`
-	defaultContext
+  activeClassField `mappend`
+  defaultContext
 
 -- https://groups.google.com/forum/#!searchin/hakyll/if$20class/hakyll/WGDYRa3Xg-w/nMJZ4KT8OZUJ 
 activeClassField :: Context a 
 activeClassField = functionField "activeClass" $ \[p] _ -> do 
-	path <- toFilePath <$> getUnderlying 
-	return $ if path == p then "active" else path 
+  path <- toFilePath <$> getUnderlying 
+  return $ if path == p then "active" else path 
