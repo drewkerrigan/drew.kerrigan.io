@@ -7,9 +7,9 @@ author:
     name: "Drew Kerrigan"
 ---
 
-This post is heavily influenced by [https://github.com/clr](https://github.com/clr) and his repository found here: [https://github.com/clr/massive\_distributed\_sorted\_set](https://github.com/clr/massive_distributed_sorted_set)
-
 # Massive Distributed Sorted Sets
+
+This post is heavily influenced by [https://github.com/clr](https://github.com/clr) and his repository found here: [https://github.com/clr/massive\_distributed\_sorted\_set](https://github.com/clr/massive_distributed_sorted_set)
 
 # The Problem
 
@@ -263,4 +263,3 @@ In solution 2a with a single `master_manifest` of `manifests`, the process to st
 * One limitation to keep in mind specifically with Riak 2.0's Datatypes is that a single map/set object should not exceed 100k of raw data. Optimizing the contents of score, `entry_set`, and `manifest` metdata should easily allow for the suggested 1000 members per set.
 
 * An example proof of concept of Solution 2 without the use of Riak's CRDT Datatypes can be found here: [https://github.com/clr/massive\_distributed\_sorted\_set](https://github.com/clr/massive_distributed_sorted_set). Please note that it expects serialized writes, and requires an additional data structure called a `transaction_log` to keep track of modified `manifests`.
-

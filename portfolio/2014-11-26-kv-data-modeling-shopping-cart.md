@@ -1,13 +1,13 @@
 ---
 layout: post
-title: Riak Data Modeling - Shopping Cart
-permalink: "riak-data-modeling-shopping-cart"
+title: KV Data Modeling - Shopping Cart
+permalink: "kv-data-modeling-shopping-cart"
 author: 
     name: "Drew Kerrigan"
-summary: Modeling shopping cart data in Riak
+summary: Modeling shopping cart data in a KV store
 ---
 
-# Riak Data Modeling: Shopping Cart
+# KV Data Modeling: Shopping Cart
 
 ## What is it?
 
